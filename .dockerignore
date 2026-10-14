@@ -1,0 +1,10 @@
+.git
+.gitignore
+.idea
+__pycache__
+*.pyc
+*.pyo
+scripts/
+*.md
+test_*.pdf
+.DS_Store

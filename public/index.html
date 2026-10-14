@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TicketScan · Распознавание ж/д билетов</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- PDF.js (UMD build -> window.pdfjsLib) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <!-- Tesseract.js v5 (-> window.Tesseract) -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+
+  <!-- ============================ Header ============================ -->
+  <header class="app-header no-print">
+    <div class="app-container">
+      <div class="flex items-center justify-between gap-4 py-3">
+        <div class="flex items-center gap-3">
+          <div class="brand-logo">🚆</div>
+          <div>
+            <h1 class="font-bold text-slate-900 leading-tight" style="font-size:17px">TicketScan</h1>
+            <p class="muted" style="font-size:12px">Распознавание российских ж/д билетов</p>
+          </div>
+        </div>
+        <div class="pill-tabs" role="tablist">
+          <button id="tabExtract" class="tab-btn active" role="tab">📋 Распознавание</button>
+          <button id="tabAdmin" class="tab-btn" role="tab">⚙️ Калибровка</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="app-container" style="padding-top:28px; padding-bottom:48px;">
+
+    <!-- ============================ VIEW 1: EXTRACTION ============================ -->
+    <section id="viewExtract">
+
+
+      <ol class="stepper mb-6 no-print" id="stepper">
+        <li class="step active" id="step1"><span class="step-num">1</span><span class="step-label">Загрузка</span></li>
+        <span class="step-sep"></span>
+        <li class="step" id="step2"><span class="step-num">2</span><span class="step-label">Распознавание</span></li>
+        <span class="step-sep"></span>
+        <li class="step" id="step3"><span class="step-num">3</span><span class="step-label">Проверка и экспорт</span></li>
+      </ol>
+
+      <!-- Upload -->
+      <div class="grid lg:grid-cols-3 gap-4 mb-6 no-print">
+        <div class="lg:col-span-2">
+          <div id="dropzone" class="dropzone h-full flex flex-col justify-center">
+            <div class="dropzone-icon">📄</div>
+            <p class="font-semibold text-slate-800" style="font-size:16px">Перетащите файлы сюда или нажмите, чтобы выбрать</p>
+            <p class="muted mt-1" style="font-size:13px">PDF, PNG или JPG · один или несколько файлов · поддержка многостраничных PDF</p>
+            <input id="fileInput" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" multiple class="hidden" />
+          </div>
+        </div>
+        <div class="card card-pad flex flex-col gap-3 justify-center">
+          <div>
+            <p class="section-title">Нет файла под рукой?</p>
+            <p class="section-sub mt-1">Сгенерируйте синтетический билет и опробуйте распознавание прямо сейчас.</p>
+          </div>
+          <button id="demoBtn" class="btn btn-amber btn-block">🧪 Загрузить демо-билет</button>
+          <button id="clearBtn" class="btn btn-ghost btn-block">🗑️ Очистить результаты</button>
+        </div>
+      </div>
+
+      <!-- Progress -->
+      <div id="progressBox" class="card card-pad mb-6 no-print hidden">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="spinner" id="progressSpinner"></span>
+          <span id="progressLabel" class="font-medium text-slate-700" style="font-size:14px">Обработка…</span>
+        </div>
+        <div class="progress-track"><div id="progressFill" class="progress-fill"></div></div>
+      </div>
+
+      <!-- Results -->
+      <div id="resultsBox" class="hidden">
+        <div class="flex items-center justify-between flex-wrap gap-3 mb-4 no-print">
+          <div class="flex items-center gap-2">
+            <h3 class="section-title" style="font-size:17px">Проверка и редактирование</h3>
+            <span class="row-index" id="rowCount">0</span>
+          </div>
+          <div class="flex gap-2 flex-wrap">
+            <button id="toggleCropsBtn" class="btn btn-ghost btn-sm">🖼️ Показать фрагменты</button>
+          </div>
+        </div>
+        <p class="section-sub mb-3 no-print">
+          Поля показаны в порядке конфигурации — исправьте любой символ прямо в ячейке.
+          Нажмите «Показать фрагменты», чтобы развернуть вырезанные из документа изображения, или
+          «Копировать строкой» на карточке билета.
+        </p>
+        <div id="resultsList" class="results-list"></div>
+      </div>
+
+      <!-- Empty state -->
+      <div id="emptyState" class="card card-pad text-center" style="padding:56px 24px;">
+        <div class="dropzone-icon" style="margin-bottom:16px;">🗂️</div>
+        <p class="font-semibold text-slate-700" style="font-size:16px">Пока нет распознанных билетов</p>
+        <p class="muted mt-1" style="font-size:14px">Загрузите файлы или нажмите «Загрузить демо-билет», чтобы увидеть результат.</p>
+      </div>
+    </section>
+
+    <!-- ============================ VIEW 2: ADMIN CALIBRATION ============================ -->
+    <section id="viewAdmin" class="hidden">
+      <div class="flex items-start justify-between gap-6 flex-wrap mb-6 no-print">
+        <div>
+          <h2 class="font-bold text-slate-900" style="font-size:24px">Калибровка макета</h2>
+          <p class="muted mt-1" style="font-size:14px; max-width:620px">
+            Настройте положение полей один раз на образце билета. Выберите поле справа и выделите его область мышью на изображении.
+            Слот 1 — синий, дополнительные слоты (2/3) — пунктирный янтарный.
+          </p>
+        </div>
+      </div>
+
+      <div class="grid lg:grid-cols-3 gap-6">
+        <!-- Canvas column -->
+        <div class="lg:col-span-2 space-y-4">
+          <div class="card card-pad no-print">
+            <div class="flex items-center gap-2 flex-wrap">
+              <label class="btn btn-primary btn-sm cursor-pointer">
+                📂 Загрузить образец
+                <input id="sampleInput" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" class="hidden" />
+              </label>
+              <button id="sampleDemoBtn" class="btn btn-amber btn-sm">🧪 Демо</button>
+              <div class="flex items-center gap-2 ml-auto">
+                <button id="prevPageBtn" class="btn btn-ghost btn-sm">◀</button>
+                <span id="pageIndicator" class="muted" style="font-size:13px; min-width:76px; text-align:center;">стр. 0 / 0</span>
+                <button id="nextPageBtn" class="btn btn-ghost btn-sm">▶</button>
+              </div>
+            </div>
+          </div>
+          <div class="canvas-shell">
+            <canvas id="calibratorCanvas" width="640" height="420"></canvas>
+          </div>
+          <div id="testOcrResult" class="card card-pad hidden">
+            <h3 class="section-title mb-3">Результат тестового OCR · страница, слот 1</h3>
+            <div id="testOcrList" class="space-y-2" style="font-size:14px"></div>
+          </div>
+        </div>
+
+        <!-- Sidebar column -->
+        <div class="card card-pad no-print h-fit">
+          <h2 class="section-title mb-4">Поля и слоты</h2>
+
+          <div class="grid grid-cols-2 gap-3 mb-5">
+            <div>
+              <label class="form-label">Слотов на странице</label>
+              <input id="slotsPerPage" type="number" min="1" max="5" class="cell-input" />
+            </div>
+            <div>
+              <label class="form-label">Смещение слота Y (0–1)</label>
+              <input id="slotOffsetY" type="number" min="0" max="1" step="0.01" class="cell-input" />
+            </div>
+          </div>
+
+          <div class="mb-5">
+            <label class="form-label">Поле-якорь (проверка слота)</label>
+            <select id="anchorField" class="cell-input"></select>
+            <select id="anchorMode" class="cell-input mt-2">
+              <option value="nonempty">Не пустое (минимум символов)</option>
+              <option value="keyword">Содержит ключевое слово</option>
+            </select>
+            <input id="anchorKeyword" class="cell-input mt-2" placeholder="Ключевое слово (напр. БИЛЕТ)" />
+          </div>
+
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="form-label" style="margin:0;">Список полей</h3>
+            <button id="addFieldBtn" class="btn btn-accent btn-sm">+ Поле</button>
+          </div>
+          <div id="fieldList" class="space-y-2 mb-5"></div>
+
+          <button id="testOcrBtn" class="btn btn-primary btn-block mb-5" style="background:#7c3aed;">🔍 Тест OCR на текущей странице</button>
+
+          <hr class="divider" />
+          <div class="space-y-2">
+            <button id="saveConfigBtn" class="btn btn-primary btn-block">💾 Сохранить в браузере</button>
+            <button id="copyConfigBtn" class="btn btn-ghost btn-block">📋 Копировать JSON для config.js</button>
+            <label class="btn btn-ghost btn-block cursor-pointer">📥 Импорт config.js / JSON
+              <input id="importConfigInput" type="file" accept=".json,.js,application/json,text/javascript" class="hidden" />
+            </label>
+            <button id="resetConfigBtn" class="btn btn-danger-soft btn-block">↺ Сбросить к значениям по умолчанию</button>
+            <p id="adminMsg" class="toast hidden"></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Config JSON (editable: paste a saved config here and apply it) -->
+      <div class="card card-pad mt-6">
+        <div class="flex items-center justify-between mb-2 flex-wrap gap-2">
+          <h3 class="section-title">JSON конфигурации</h3>
+          <div class="flex items-center gap-2">
+            <span class="section-sub">вставьте сохранённый JSON и нажмите «Применить»</span>
+            <button id="applyJsonBtn" class="btn btn-accent btn-sm">✅ Применить JSON</button>
+          </div>
+        </div>
+        <textarea id="configJson" spellcheck="false"></textarea>
+      </div>
+    </section>
+
+  </main>
+
+
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+services:
+  ticketscan:
+    build: .
+    image: ticketscan:latest
+    container_name: ticketscan
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
