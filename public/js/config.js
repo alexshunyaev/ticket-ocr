@@ -56,12 +56,6 @@ export const DEFAULT_CONFIG = {
       box: { x: 0.0566, y: 0.0806, w: 0.094, h: 0.0281 },
     },
     {
-      id: 'field_mv8ecy12',
-      label: 'ФИО',
-      type: FIELD_TYPES.TEXT_CYRILLIC,
-      box: { x: 0.5086, y: 0.1636, w: 0.3924, h: 0.0409 },
-    },
-    {
       id: 'field_mv8edocq',
       label: 'Время отправления',
       type: FIELD_TYPES.DATE_TIME,
@@ -72,6 +66,19 @@ export const DEFAULT_CONFIG = {
       label: 'Дата отправления',
       type: FIELD_TYPES.DATE_TIME,
       box: { x: 0.2066, y: 0.1531, w: 0.1284, h: 0.0243 },
+    },
+    {
+      id: 'field_mw4quebl',
+      label: 'ФИО',
+      type: FIELD_TYPES.TEXT_CYRILLIC,
+      box: { x: 0.5037, y: 0.1671, w: 0.4067, h: 0.0566 },
+    },
+    {
+      // Tall strip: the total shifts vertically. See priceFromTextLayer().
+      id: 'field_mw4qprice',
+      label: 'Цена',
+      type: FIELD_TYPES.PRICE,
+      box: { x: 0.8, y: 0.68, w: 0.11, h: 0.14 },
     },
   ],
 };

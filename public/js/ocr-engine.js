@@ -5,6 +5,7 @@
 //   - Image preprocessing (upscale, grayscale, Otsu binarization)
 //   - Persistent Tesseract.js v5 worker configured strictly for 'rus'
 //   - Field-specific Russian post-processing
+//   - PDF text layer for price fields (exact, and tolerates vertical shifts)
 //
 // Depends on global `window.pdfjsLib` and `window.Tesseract` loaded via CDN.
 
@@ -105,11 +106,28 @@ async function renderPdfToCanvases(file, scale, onPage) {
     canvas.height = Math.ceil(viewport.height);
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     await page.render({ canvasContext: ctx, viewport }).promise;
+    canvas.textItems = await readTextItems(page, viewport);
     canvases.push(canvas);
     if (onPage) onPage({ page: pageNum, total: pdf.numPages });
   }
   await pdf.cleanup();
   return canvases;
+}
+
+/**
+ * Read a PDF page's text layer. Empty for scanned PDFs.
+ * @returns {Promise<Array<{text:string,x:number,y:number}>>} items with their
+ *   baseline start point, normalized (0..1) like the field boxes
+ */
+async function readTextItems(page, viewport) {
+  const { items } = await page.getTextContent();
+  return items.map((item) => {
+    const [x, y] = viewport.convertToViewportPoint(
+      item.transform[4],
+      item.transform[5]
+    );
+    return { text: item.str, x: x / viewport.width, y: y / viewport.height };
+  });
 }
 
 /**
@@ -292,9 +310,10 @@ export async function recognizeCanvas(canvas, psm = '7', whitelist = '', lang = 
 }
 
 /** Map a field type to a sensible page segmentation mode. */
-function psmForType(_type) {
-  // All our boxes are single lines.
-  return '7';
+function psmForType(type) {
+  // Names can wrap onto several lines, and '7' keeps only one of them.
+  // All other boxes are single lines.
+  return type === FIELD_TYPES.TEXT_CYRILLIC ? '6' : '7';
 }
 
 /**
@@ -426,6 +445,27 @@ function cleanPrice(text) {
 // ---------------------------------------------------------------------------
 
 /**
+ * Find the largest amount inside a box in a page's text layer. The total moves
+ * up and down between tickets, so its box is a tall strip that also catches the
+ * line items above it, and the total is always the largest of them.
+ * @returns {string} cleaned price, or '' if the box has no amount
+ */
+function priceFromTextLayer(textItems = [], box) {
+  const amounts = textItems
+    .filter(
+      (t) =>
+        t.x >= box.x &&
+        t.x <= box.x + box.w &&
+        t.y >= box.y &&
+        t.y <= box.y + box.h
+    )
+    .map((t) => cleanPrice(t.text))
+    .filter((price) => /,\d{2}$/.test(price));
+  const value = (price) => parseFloat(price.replace(',', '.'));
+  return amounts.sort((a, b) => value(b) - value(a))[0] || '';
+}
+
+/**
  * Extract one field from a page canvas for a given slot.
  * @returns {{text:string, raw:string, dataURL:string}}
  */
@@ -434,6 +474,10 @@ export async function extractField(pageCanvas, field, slotIndex, slotOffsetY) {
   const crop = cropBox(pageCanvas, box);
   if (!crop) return { text: '', raw: '', dataURL: '' };
   const dataURL = crop.toDataURL('image/png');
+  if (field.type === FIELD_TYPES.PRICE) {
+    const price = priceFromTextLayer(pageCanvas.textItems, box);
+    if (price) return { text: price, raw: price, dataURL };
+  }
   const pre = preprocessCanvas(crop);
   const raw = await recognizeCanvas(
     pre,
